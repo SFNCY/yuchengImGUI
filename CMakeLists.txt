@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.30.0 FATAL_ERROR)
 
 project(imgui VERSION 1.0)
 
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 file(GLOB _SOURCES  "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
                     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 file(GLOB EXTERNAL_H  "${CMAKE_CURRENT_SOURCE_DIR}/*.h")

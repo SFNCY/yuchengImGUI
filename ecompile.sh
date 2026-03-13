@@ -1,4 +1,4 @@
-
+#!/bin/bash
 clear
 compiler_tool="Unix Makefiles"
 # compiler_tool="Ninja"
