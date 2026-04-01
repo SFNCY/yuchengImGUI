@@ -11,7 +11,12 @@ file(GLOB EXTERNAL_H  "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
 
 add_subdirectory(3rdlibs)
 
-add_library(${PROJECT_NAME} SHARED ${_SOURCES})
+
+if (WIN32)
+    add_library(${PROJECT_NAME} STATIC ${_SOURCES})
+else()
+    add_library(${PROJECT_NAME} SHARED ${_SOURCES})
+endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
                         PUBLIC_HEADER "${EXTERNAL_H}"

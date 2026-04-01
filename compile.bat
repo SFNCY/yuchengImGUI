@@ -4,6 +4,8 @@ set compiler_tool="Visual Studio 17 2022"
 set build_config_type=Release
 set current_abs_directory=%~dp0
 set build_directory=%current_abs_directory%build
+set install_directory=%current_abs_directory%install
+set thirdLibs_directory=%current_abs_directory%3rdlibs
 
 set CMAKE_EXE=%thirdLibs_directory%/cmake-3.31.4-windows-x86_64/bin/cmake.exe
 
