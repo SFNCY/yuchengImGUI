@@ -17,7 +17,7 @@ set data_path=%~dp0/data
 
 set CMAKE_EXE=%thirdLibs_directory%/cmake-3.31.4-windows-x86_64/bin/cmake.exe
 
-%CMAKE_EXE% -E rm -rf %demo_build_directory%
+@REM %CMAKE_EXE% -E rm -rf %demo_build_directory%
 %CMAKE_EXE% -E make_directory %demo_build_directory%
 %CMAKE_EXE%                                                                      ^
 -G %compiler_tool%                                                               ^
@@ -31,5 +31,5 @@ set CMAKE_EXE=%thirdLibs_directory%/cmake-3.31.4-windows-x86_64/bin/cmake.exe
 
 @REM call ./copydll.bat
 
-%current_abs_directory%demo/build/opengl/Release/demoGlfwOpenGL.exe
-@REM %current_abs_directory%demo/build/vulkan/Release/demoGlfwVulkan.exe
+@REM %current_abs_directory%demo/build/opengl/Release/demoGlfwOpenGL.exe
+%current_abs_directory%demo/build/vulkan/Release/demoGlfwVulkan.exe
