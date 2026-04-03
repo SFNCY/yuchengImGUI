@@ -172,6 +172,26 @@ struct AppState {
     
     /// @brief 检查是否有形状
     bool HasShapes() const { return !shapes.empty(); }
+    
+    // ========================================================================
+    // UI 布局相关
+    // ========================================================================
+    
+    /// @brief 当前选中的标签页索引
+    /// @details 0=算法参数，1=可视化选项，2=形状编辑器，3=统计信息
+    int currentTabIndex = 0;
+    
+    /// @brief 分割线位置
+    /// @details 控制左右面板的宽度
+    float splitterPosition = 320.0f;
+    
+    /// @brief 折叠前记录的分割线位置
+    /// @details 用于恢复折叠前的布局
+    float lastSplitterPosition = 320.0f;
+    
+    /// @brief 参数面板是否折叠
+    /// @details 折叠后只显示标题栏
+    bool parameterPanelCollapsed = false;
 };
 
 // ============================================================================
@@ -341,6 +361,18 @@ void RemoveShape(AppState* state, int index);
 /// @details 显示形状列表，支持选择、编辑、添加和删除形状
 /// @param state 应用程序状态指针
 void RenderShapeEditor(AppState* state);
+
+// ============================================================================
+// RenderSplitter - 渲染可拖动分割线
+// ============================================================================
+/// @brief 在指定位置渲染一个可拖动的垂直分割线
+/// @param splitterX 分割线 X 坐标（输入输出）
+/// @param minWidth 左侧区域最小宽度
+/// @param maxWidth 左侧区域最大宽度
+/// @param totalWidth 总宽度
+/// @param splitterThickness 分割线厚度（像素）
+/// @param is_dragging 拖动状态指针（外部管理，避免静态状态污染）
+void RenderSplitter(float* splitterX, float minWidth, float maxWidth, float totalWidth, float splitterThickness, bool* is_dragging);
 
 // ============================================================================
 // GetCombinedSDF - 获取复合 SDF

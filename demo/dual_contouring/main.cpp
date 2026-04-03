@@ -35,10 +35,7 @@ static void glfw_error_callback(int error, const char* description)
 // ============================================================================
 // 主循环前的初始化
 // ============================================================================
-bool initOpenGL()
-{
-    return true;
-}
+// OpenGL initialization is handled by GLFW/GLAD when glfwMakeContextCurrent is called
 
 // ============================================================================
 // 主代码
@@ -124,8 +121,8 @@ int main(int, char**)
     // 添加默认圆形场景
     AddCircle(&state, ImVec2(0.0f, 0.0f), 0.5f);
     
-    // 初始化 OpenGL
-    initOpenGL();
+    // 初始化 OpenGL (已在 GLFW/GLAD 初始化时完成)
+    // initOpenGL();
 
     // ============================================================================
     // DC 数据结构
@@ -189,7 +186,7 @@ int main(int, char**)
         // ============================================================================
         if (needsRebuild) {
             // 清理旧数据
-            delete root;
+            dc::Quadtree::deleteTree(root);
             root = nullptr;
             mesh.Clear();
             
@@ -221,77 +218,137 @@ int main(int, char**)
         }
 
         // ============================================================================
-        // 左侧控制面板
+        // 左侧参数面板（标签页式）
         // ============================================================================
-        const float controlPanelWidth = 320.0f;
-        ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(controlPanelWidth, (float)720), ImGuiCond_Always);
-        
-        {
-            ImGui::Begin("控制面板", nullptr, 
+        if (state.parameterPanelCollapsed) {
+            // 折叠状态：只渲染展开按钮
+            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(50, (float)720), ImGuiCond_Always);
+            
+            ImGui::Begin("参数面板", nullptr,
+                ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoCollapse |
+                ImGuiWindowFlags_NoTitleBar);
+            
+            // 垂直排列的展开按钮
+            if (ImGui::Button(">>", ImVec2(30, 50))) {
+                state.parameterPanelCollapsed = false;
+                state.splitterPosition = state.lastSplitterPosition;
+            }
+            
+            ImGui::End();
+        } else {
+            // 展开状态：正常渲染参数面板
+            const float panelWidth = state.splitterPosition > 0 ? state.splitterPosition : 320.0f;
+            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(panelWidth, (float)720), ImGuiCond_Always);
+            
+            ImGui::Begin("参数面板", nullptr, 
                 ImGuiWindowFlags_NoResize | 
-                ImGuiWindowFlags_NoMove |
                 ImGuiWindowFlags_NoCollapse |
                 ImGuiWindowFlags_NoTitleBar);
             
-            // 渲染控制面板
-            RenderControlPanel(&state);
+            // 标签页式参数面板
+            if (ImGui::BeginTabBar("ParameterTabs")) {
+                // 算法参数标签
+                if (ImGui::BeginTabItem("算法参数")) {
+                    ImGui::Text("算法参数");
+                    ImGui::Separator();
+
+                    // 最大深度滑块
+                    if (ImGui::SliderInt("最大深度", &state.maxDepth, 1, 8, "%.0f")) {
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(%d)", state.maxDepth);
+
+                    // QEF阈值滑块
+                    if (ImGui::SliderFloat("QEF 阈值", &state.qefThreshold, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(%.3f)", state.qefThreshold);
+                    ImGui::EndTabItem();
+                }
+                // 可视化选项标签
+                if (ImGui::BeginTabItem("可视化选项")) {
+                    // SDF 相关可视化
+                    if (ImGui::CollapsingHeader("SDF 可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::Checkbox("SDF 等值线", &state.showSDFContour);
+                        ImGui::Checkbox("法线向量", &state.showNormals);
+                    }
+                    
+                    // 四叉树可视化
+                    if (ImGui::CollapsingHeader("四叉树可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::Checkbox("四叉树边界", &state.showQuadtreeBounds);
+                        ImGui::Checkbox("节点中心点", &state.showQuadtreeNodes);
+                    }
+                    
+                    // 对偶网格可视化
+                    if (ImGui::CollapsingHeader("对偶网格可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::Checkbox("对偶网格", &state.showDualMesh);
+                        ImGui::Checkbox("QEF 交点", &state.showQEFIntersections);
+                    }
+                    ImGui::EndTabItem();
+                }
+                // 形状编辑器标签
+                if (ImGui::BeginTabItem("形状编辑器")) {
+                    RenderShapeEditor(&state);
+                    ImGui::EndTabItem();
+                }
+                // 统计信息标签
+                if (ImGui::BeginTabItem("统计信息")) {
+                    RenderInfoPanel(&state, &mesh);
+                    ImGui::EndTabItem();
+                }
+                ImGui::EndTabBar();
+            }
+            
+            // 折叠按钮（EndTabBar 之后、End 之前）
+            if (!state.parameterPanelCollapsed) {
+                ImGui::SameLine();
+                if (ImGui::Button("<<", ImVec2(30, 20))) {
+                    // 折叠参数面板
+                    state.lastSplitterPosition = state.splitterPosition;
+                    state.parameterPanelCollapsed = true;
+                    state.splitterPosition = 0.0f;  // 让画布全宽
+                }
+            }
             
             ImGui::End();
         }
 
-        // ============================================================================
-        // 统计信息面板
-        // ============================================================================
-        {
-            ImGui::SetNextWindowPos(ImVec2(0, 420), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(controlPanelWidth, 300), ImGuiCond_Always);
-            
-            ImGui::Begin("##stats_panel", nullptr,
-                ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoCollapse |
-                ImGuiWindowFlags_NoTitleBar);
-            
-            RenderInfoPanel(&state, &mesh);
-            
-            ImGui::End();
+        // 渲染分割线（参数面板和画布之间）
+        if (!state.parameterPanelCollapsed) {
+            static bool splitter_dragging = false;
+            RenderSplitter(&state.splitterPosition, 250.0f, 500.0f, 1280.0f, 8.0f, &splitter_dragging);
         }
 
         // ============================================================================
-        // 形状编辑器面板
+        // 分步可视化控制（保留在底部）
         // ============================================================================
         {
-            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(controlPanelWidth, 400), ImGuiCond_Always);
+            const float stepPanelWidth = state.parameterPanelCollapsed ? 0.0f : 
+                (state.splitterPosition > 0 ? state.splitterPosition : 320.0f);
             
-            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-            RenderShapeEditor(&state);
-        }
-
-        // ============================================================================
-        // 分步可视化控制
-        // ============================================================================
-        {
-            ImGui::SetNextWindowPos(ImVec2(0, 740), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(controlPanelWidth, 200), ImGuiCond_Always);
-            
-            ImGui::Begin("##step_controls", nullptr,
-                ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoCollapse |
-                ImGuiWindowFlags_NoTitleBar);
-            
-            RenderStepControls(&state);
-            
-            ImGui::End();
+            if (!state.parameterPanelCollapsed) {
+                ImGui::SetNextWindowPos(ImVec2(0, 740), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(stepPanelWidth, 200), ImGuiCond_Always);
+                
+                ImGui::Begin("##step_controls", nullptr,
+                    ImGuiWindowFlags_NoResize |
+                    ImGuiWindowFlags_NoCollapse |
+                    ImGuiWindowFlags_NoTitleBar);
+                
+                RenderStepControls(&state);
+                
+                ImGui::End();
+            }
         }
 
         // ============================================================================
         // 右侧渲染画布
         // ============================================================================
-        const float canvasX = controlPanelWidth;
-        const float canvasWidth = (float)1280 - controlPanelWidth;
+        const float canvasX = state.splitterPosition;
+        const float canvasWidth = (float)1280 - state.splitterPosition;
         
         ImGui::SetNextWindowPos(ImVec2(canvasX, 0), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(canvasWidth, (float)720), ImGuiCond_Always);
@@ -299,7 +356,6 @@ int main(int, char**)
         {
             ImGui::Begin("渲染画布", nullptr,
                 ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoMove |
                 ImGuiWindowFlags_NoCollapse |
                 ImGuiWindowFlags_NoTitleBar);
             
@@ -392,10 +448,7 @@ int main(int, char**)
             }
             
             // 绘制法线（如果在可视化选项中启用）
-            if (state.showNormals && root) {
-                // 绘制法线向量
-                // TODO: 实现法线绘制
-            }
+            // Note: 法线绘制功能待实现
             
             // 绘制形状编辑器中的形状
             for (int i = 0; i < (int)state.shapes.size(); i++) {

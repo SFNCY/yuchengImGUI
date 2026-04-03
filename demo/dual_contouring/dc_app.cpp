@@ -467,6 +467,93 @@ namespace ImGui {
 } // namespace ImGui
 
 // ============================================================================
+// RenderSplitter - 渲染可拖动分割线
+// ============================================================================
+//
+// 在指定位置渲染一个可拖动的垂直分割线。
+//
+// 功能：
+// - 鼠标悬停时改变光标样式为 ImGuiMouseCursor_ResizeEW
+// - 鼠标拖动时更新 splitterX 位置
+// - 约束检查：确保左侧区域宽度在 minWidth 和 maxWidth 之间
+// - 使用 ImDrawList 绘制分割线
+//
+// 参数：
+//   @param splitterX 分割线 X 坐标（相对于窗口左侧）
+//   @param minWidth 左侧区域最小宽度
+//   @param maxWidth 左侧区域最大宽度
+//   @param totalWidth 总宽度
+//   @param splitterThickness 分割线厚度（像素）
+// ============================================================================
+void RenderSplitter(float* splitterX, float minWidth, float maxWidth, float totalWidth, float splitterThickness, bool* is_dragging)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImVec2 screen_pos = ImGui::GetCursorScreenPos();
+    
+    // 计算分割线的绝对屏幕 X 坐标
+    float splitter_abs_x = screen_pos.x + *splitterX;
+    
+    // 鼠标在窗口内的相对位置
+    float mouse_x = io.MousePos.x - screen_pos.x;
+    float mouse_y = io.MousePos.y - screen_pos.y;
+    
+    // 判断鼠标是否在分割线附近（使用两倍厚度作为检测区域，便于拖动）
+    float hit_tolerance = splitterThickness * 2.0f;
+    bool is_hovering = (fabsf(mouse_x - *splitterX) < hit_tolerance) && 
+                       (mouse_y >= 0.0f && mouse_y < totalWidth);
+    
+    // 悬停时改变光标样式
+    if (is_hovering) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    }
+    
+    // 处理拖动逻辑
+    
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (is_hovering || *is_dragging) {
+            *is_dragging = true;
+            
+            // 计算新的分割线位置
+            float new_left_width = mouse_x;
+            
+            // 约束检查：确保左右区域宽度在允许范围内
+            if (new_left_width < minWidth) {
+                new_left_width = minWidth;
+            }
+            if (new_left_width > maxWidth) {
+                new_left_width = maxWidth;
+            }
+            float right_width = totalWidth - new_left_width;
+            if (right_width < minWidth) {
+                new_left_width = totalWidth - minWidth;
+            }
+            if (right_width > maxWidth) {
+                new_left_width = totalWidth - maxWidth;
+            }
+            
+            *splitterX = new_left_width;
+            splitter_abs_x = screen_pos.x + *splitterX;
+        }
+    } else {
+        *is_dragging = false;
+    }
+    
+    // 绘制分割线
+    // 使用稍微亮一点的颜色表示激活状态
+    ImU32 line_color = (is_hovering || *is_dragging) 
+        ? IM_COL32(120, 120, 120, 255) 
+        : IM_COL32(80, 80, 80, 255);
+    
+    draw_list->AddLine(
+        ImVec2(splitter_abs_x, screen_pos.y),
+        ImVec2(splitter_abs_x, screen_pos.y + totalWidth),
+        line_color,
+        splitterThickness
+    );
+}
+
+// ============================================================================
 // 渲染控制面板
 // ============================================================================
 //
@@ -491,7 +578,6 @@ void RenderControlPanel(AppState* state)
     ImGui::SetNextWindowSize(ImVec2(panel_width, 0));
     ImGui::Begin("控制面板", nullptr, 
         ImGuiWindowFlags_NoResize | 
-        ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoCollapse);
     
     // ========================================================================
@@ -571,13 +657,6 @@ void RenderInfoPanel(AppState* state, const dc::DualMesh* mesh)
         return;
     }
     
-    // 开始信息面板窗口
-    ImGui::SetNextWindowSize(ImVec2(280.0f, 0));
-    ImGui::Begin("统计信息", nullptr,
-        ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoCollapse);
-    
     // ========================================================================
     // 帧率信息
     // ========================================================================
@@ -587,7 +666,7 @@ void RenderInfoPanel(AppState* state, const dc::DualMesh* mesh)
     
     ImGuiIO& io = ImGui::GetIO();
     float fps = io.Framerate;
-    float frame_time = 1000.0f / fps;
+    float frame_time = (fps > 0.0f) ? (1000.0f / fps) : 0.0f;
     
     ImGui::Text("帧率: %.1f FPS", fps);
     ImGui::Text("帧时间: %.2f ms", frame_time);
@@ -638,8 +717,6 @@ void RenderInfoPanel(AppState* state, const dc::DualMesh* mesh)
     ImGui::Separator();
     
     ImGui::Text("SDF 评估次数: %d", state->sdfEvalCount);
-    
-    ImGui::End();
 }
 
 // ============================================================================
@@ -707,8 +784,9 @@ void RemoveShape(AppState* state, int index)
     
     state->shapes.erase(state->shapes.begin() + index);
     
-    // 如果删除的是选中的形状，或者选中索引超出范围，清除选中状态
-    if (state->selectedShape == index || state->selectedShape >= count) {
+    // 重新获取count，因为erase后size已改变
+    int newCount = (int)state->shapes.size();
+    if (state->selectedShape == index || state->selectedShape >= newCount) {
         state->selectedShape = -1;
     }
 }
@@ -722,16 +800,8 @@ void RenderShapeEditor(AppState* state)
         return;
     }
     
-    // 设置窗口宽度
+    // 设置面板宽度
     const float panel_width = 300.0f;
-    ImGui::SetNextWindowSize(ImVec2(panel_width, 400.0f));
-    
-    // 开始形状编辑器窗口
-    if (!ImGui::Begin("形状编辑器", &state->showShapeEditor,
-        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
-        ImGui::End();
-        return;
-    }
     
     // ========================================================================
     // 形状列表区域
@@ -839,8 +909,6 @@ void RenderShapeEditor(AppState* state)
         AddSquare(state, ImVec2(0.0f, 0.0f), 1.0f);
         state->selectedShape = (int)state->shapes.size() - 1;
     }
-    
-    ImGui::End();
 }
 
 // ============================================================================
@@ -886,16 +954,21 @@ const SDFBase* GetCombinedSDF(AppState* state)
     }
     
     // 多个形状：构建并集链
-    // 从后向前两两合并
-    for (int i = 0; i < count - 1; i++) {
-        g_unions[i].sdf1 = (SDFBase*)&g_circles[i];  // 安全的类型转换
-        g_unions[i].sdf2 = (SDFBase*)&g_unions[i + 1];
+    // 倒序构建联合
+    for (int i = count - 1; i > 0; i--) {
+        int union_idx = i - 1;
+        if (i == count - 1) {
+            // 最后一个形状
+            g_unions[union_idx].sdf2 = (state->shapes[i].type == ShapeType::Circle)
+                ? (SDFBase*)&g_circles[i]
+                : (SDFBase*)&g_squares[i];
+        } else {
+            g_unions[union_idx].sdf2 = (SDFBase*)&g_unions[i];
+        }
+        g_unions[union_idx].sdf1 = (state->shapes[i - 1].type == ShapeType::Circle)
+            ? (SDFBase*)&g_circles[i - 1]
+            : (SDFBase*)&g_squares[i - 1];
     }
-    
-    // 最后一个 union 的 sdf2 指向最后一个形状
-    g_unions[count - 2].sdf2 = (state->shapes[count - 1].type == ShapeType::Circle) 
-        ? (SDFBase*)&g_circles[count - 1] 
-        : (SDFBase*)&g_squares[count - 1];
     
     return &g_unions[0];
 }

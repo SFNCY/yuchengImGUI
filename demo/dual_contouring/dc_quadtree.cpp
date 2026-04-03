@@ -291,7 +291,8 @@ bool ShouldSubdivide(QuadtreeNode* node, const SDFBase* sdf) {
 void BuildQuadtree(QuadtreeNode* node, const SDFBase* sdf, int maxDepth) {
     if (!node || !sdf) return;
     if (node->depth >= maxDepth) return;
-    
+    if (node->depth > 60) return;  // 额外的安全余量，防止极端情况
+
     // 检查是否需要细分
     if (!ShouldSubdivide(node, sdf)) return;
     
