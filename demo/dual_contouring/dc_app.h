@@ -192,6 +192,10 @@ struct AppState {
     /// @brief 参数面板是否折叠
     /// @details 折叠后只显示标题栏
     bool parameterPanelCollapsed = false;
+    
+    /// @brief 上下分隔比例
+    /// @details 控制左侧面板上下区域的高度比例 (0.0-1.0)
+    float verticalSplitterRatio = 0.7f;
 };
 
 // ============================================================================

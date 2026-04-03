@@ -64,7 +64,7 @@ int main(int, char**)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 #endif
 
-    // Create window
+    // Create window - size will be updated after ImGui context is created
     GLFWwindow* window = glfwCreateWindow(1280, 720, "Dual Contouring Demo", nullptr, nullptr);
     if (window == nullptr)
         return 1;
@@ -77,6 +77,11 @@ int main(int, char**)
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    
+    // Update window to use display size (must be done after first frame)
+    // Note: io.DisplaySize is not valid here, so we use a reasonable default 1280x720
+    // and rely on the render loop to handle resizing properly
+    // glfwSetWindowSize(window, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
 
     // Setup style
     ImGui::StyleColorsDark();
@@ -211,146 +216,294 @@ int main(int, char**)
         }
 
         // ============================================================================
-        // 左侧参数面板（标签页式）
+        // 自适应布局：左右分隔栏
         // ============================================================================
-        if (state.parameterPanelCollapsed) {
-            // 折叠状态：只渲染展开按钮
-            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(50, (float)720), ImGuiCond_Always);
-            
-            ImGui::Begin("参数面板", nullptr,
-                ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoCollapse |
-                ImGuiWindowFlags_NoTitleBar);
-            
-            // 垂直排列的展开按钮
-            if (ImGui::Button(">>", ImVec2(30, 50))) {
-                state.parameterPanelCollapsed = false;
-                state.splitterPosition = state.lastSplitterPosition;
-            }
-            
-            ImGui::End();
-        } else {
-            // 展开状态：正常渲染参数面板
-            const float panelWidth = state.splitterPosition > 0 ? state.splitterPosition : 320.0f;
-            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(panelWidth, (float)720), ImGuiCond_Always);
-            
-            ImGui::Begin("参数面板", nullptr, 
-                ImGuiWindowFlags_NoResize | 
-                ImGuiWindowFlags_NoCollapse |
-                ImGuiWindowFlags_NoTitleBar);
-            
-            // 标签页式参数面板
-            if (ImGui::BeginTabBar("ParameterTabs")) {
-                // 算法参数标签
-                if (ImGui::BeginTabItem("算法参数")) {
-                    ImGui::Text("算法参数");
-                    ImGui::Separator();
-
-                    // 最大深度滑块
-                    if (ImGui::SliderInt("最大深度", &state.maxDepth, 1, 8, "%.0f")) {
-                    }
-                    ImGui::SameLine();
-                    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(%d)", state.maxDepth);
-
-                    // QEF阈值滑块
-                    if (ImGui::SliderFloat("QEF 阈值", &state.qefThreshold, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
-                    }
-                    ImGui::SameLine();
-                    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(%.3f)", state.qefThreshold);
-                    ImGui::EndTabItem();
-                }
-                // 可视化选项标签
-                if (ImGui::BeginTabItem("可视化选项")) {
-                    // SDF 相关可视化
-                    if (ImGui::CollapsingHeader("SDF 可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
-                        ImGui::Checkbox("SDF 等值线", &state.showSDFContour);
-                        ImGui::Checkbox("法线向量", &state.showNormals);
-                    }
-                    
-                    // 四叉树可视化
-                    if (ImGui::CollapsingHeader("四叉树可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
-                        ImGui::Checkbox("四叉树边界", &state.showQuadtreeBounds);
-                        ImGui::Checkbox("节点中心点", &state.showQuadtreeNodes);
-                    }
-                    
-                    // 对偶网格可视化
-                    if (ImGui::CollapsingHeader("对偶网格可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
-                        ImGui::Checkbox("对偶网格", &state.showDualMesh);
-                        ImGui::Checkbox("QEF 交点", &state.showQEFIntersections);
-                    }
-                    ImGui::EndTabItem();
-                }
-                // 形状编辑器标签
-                if (ImGui::BeginTabItem("形状编辑器")) {
-                    RenderShapeEditor(&state);
-                    ImGui::EndTabItem();
-                }
-                // 统计信息标签
-                if (ImGui::BeginTabItem("统计信息")) {
-                    RenderInfoPanel(&state, &mesh);
-                    ImGui::EndTabItem();
-                }
-                ImGui::EndTabBar();
-            }
-            
-            // 折叠按钮（EndTabBar 之后、End 之前）
-            if (!state.parameterPanelCollapsed) {
-                ImGui::SameLine();
-                if (ImGui::Button("<<", ImVec2(30, 20))) {
-                    // 折叠参数面板
-                    state.lastSplitterPosition = state.splitterPosition;
-                    state.parameterPanelCollapsed = true;
-                    state.splitterPosition = 0.0f;  // 让画布全宽
-                }
-            }
-            
-            ImGui::End();
-        }
-
-        // 渲染分割线（参数面板和画布之间）
-        if (!state.parameterPanelCollapsed) {
-            static bool splitter_dragging = false;
-            RenderSplitter(&state.splitterPosition, 250.0f, 500.0f, 1280.0f, 8.0f, &splitter_dragging);
-        }
-
+        // 新的布局结构：
+        // +------------------+------------------+
+        // |   参数面板      |                  |
+        // |   (4个tab)      |    渲染画布      |
+        // |                  |                  |
+        // +------------------+------------------+
+        // |  分布可视化路径   |                  |
+        // |   (第5个tab)     |                  |
+        // +------------------+------------------+
+        
+        // 左右分隔比例 (0.0-1.0)，控制左侧面板宽度
+        static float horizontalSplitterRatio = 0.25f;  // 默认左侧占 25%
+        static bool horizontalSplitterDragging = false;
+        
+        // 上下分隔比例 (0.0-1.0)，控制左侧上下区域高度
+        static float verticalSplitterRatio = 0.65f;  // 默认上部分占 65%，底部留更多空间
+        static bool verticalSplitterDragging = false;
+        
+        // 计算分隔后各区域尺寸
+        const float totalWidth = io.DisplaySize.x;
+        const float totalHeight = io.DisplaySize.y;
+        const float minPanelWidth = 200.0f;
+        const float minPanelHeight = 100.0f;
+        
+        // 左右分隔栏位置
+        float leftPanelWidth = totalWidth * horizontalSplitterRatio;
+        if (leftPanelWidth < minPanelWidth) leftPanelWidth = minPanelWidth;
+        if (leftPanelWidth > totalWidth - minPanelWidth) leftPanelWidth = totalWidth - minPanelWidth;
+        float rightCanvasWidth = totalWidth - leftPanelWidth - 8.0f;  // 8.0f 是分隔栏厚度
+        
+        // 上下分隔栏位置（在左侧面板内）
+        float leftTopHeight = totalHeight * verticalSplitterRatio;
+        if (leftTopHeight < minPanelHeight) leftTopHeight = minPanelHeight;
+        if (leftTopHeight > totalHeight - minPanelHeight) leftTopHeight = totalHeight - minPanelHeight;
+        float leftBottomHeight = totalHeight - leftTopHeight - 8.0f;  // 8.0f 是分隔栏厚度
+        
         // ============================================================================
-        // 分步可视化控制（保留在底部）
+        // 左侧参数面板 - 使用 Child Window 实现
         // ============================================================================
         {
-            const float stepPanelWidth = state.parameterPanelCollapsed ? 0.0f : 
-                (state.splitterPosition > 0 ? state.splitterPosition : 320.0f);
+            ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(leftPanelWidth, totalHeight), ImGuiCond_Always);
             
-            if (!state.parameterPanelCollapsed) {
-                ImGui::SetNextWindowPos(ImVec2(0, 740), ImGuiCond_Always);
-                ImGui::SetNextWindowSize(ImVec2(stepPanelWidth, 200), ImGuiCond_Always);
+            ImGui::Begin("##left_panel", nullptr,
+                ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoCollapse |
+                ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoMove);
+            
+            // 上半部分：4个标签页
+            {
+                ImGui::BeginChild("##top_section", ImVec2(leftPanelWidth - 4.0f, leftTopHeight - 4.0f), true);
                 
-                ImGui::Begin("##step_controls", nullptr,
-                    ImGuiWindowFlags_NoResize |
-                    ImGuiWindowFlags_NoCollapse |
-                    ImGuiWindowFlags_NoTitleBar);
-                
-                RenderStepControls(&state);
-                
-                ImGui::End();
-            }
-        }
+                if (ImGui::BeginTabBar("ParameterTabs")) {
+                    // 算法参数标签
+                    if (ImGui::BeginTabItem("算法参数")) {
+                        ImGui::Text("算法参数");
+                        ImGui::Separator();
 
+                        // 最大深度滑块
+                        if (ImGui::SliderInt("最大深度", &state.maxDepth, 1, 8, "%.0f")) {
+                        }
+                        ImGui::SameLine();
+                        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(%d)", state.maxDepth);
+
+                        // QEF阈值滑块
+                        if (ImGui::SliderFloat("QEF 阈值", &state.qefThreshold, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic)) {
+                        }
+                        ImGui::SameLine();
+                        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(%.3f)", state.qefThreshold);
+                        
+                        // 上下分隔比例滑块（调试用）
+                        ImGui::Separator();
+                        ImGui::Text("布局调试：");
+                        ImGui::SliderFloat("上下比例", &verticalSplitterRatio, 0.2f, 0.8f, "%.2f");
+                        ImGui::SliderFloat("左右比例", &horizontalSplitterRatio, 0.15f, 0.4f, "%.2f");
+                        
+                        ImGui::EndTabItem();
+                    }
+                    // 可视化选项标签
+                    if (ImGui::BeginTabItem("可视化选项")) {
+                        // SDF 相关可视化
+                        if (ImGui::CollapsingHeader("SDF 可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
+                            ImGui::Checkbox("SDF 等值线", &state.showSDFContour);
+                            ImGui::Checkbox("法线向量", &state.showNormals);
+                        }
+                        
+                        // 四叉树可视化
+                        if (ImGui::CollapsingHeader("四叉树可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
+                            ImGui::Checkbox("四叉树边界", &state.showQuadtreeBounds);
+                            ImGui::Checkbox("节点中心点", &state.showQuadtreeNodes);
+                        }
+                        
+                        // 对偶网格可视化
+                        if (ImGui::CollapsingHeader("对偶网格可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
+                            ImGui::Checkbox("对偶网格", &state.showDualMesh);
+                            ImGui::Checkbox("QEF 交点", &state.showQEFIntersections);
+                        }
+                        ImGui::EndTabItem();
+                    }
+                    // 形状编辑器标签
+                    if (ImGui::BeginTabItem("形状编辑器")) {
+                        RenderShapeEditor(&state);
+                        ImGui::EndTabItem();
+                    }
+                    // 统计信息标签
+                    if (ImGui::BeginTabItem("统计信息")) {
+                        RenderInfoPanel(&state, &mesh);
+                        ImGui::EndTabItem();
+                    }
+                    ImGui::EndTabBar();
+                }
+                
+                ImGui::EndChild();
+            }
+            
+            // 上下分隔栏
+            {
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+                
+                // 计算分隔栏区域
+                ImVec2 splitterPos = ImGui::GetCursorScreenPos();
+                ImGuiIO& splitterIO = ImGui::GetIO();
+                
+                // 分隔栏检测区域（手动计算）
+                float splitterMinX = splitterPos.x;
+                float splitterMaxX = splitterPos.x + leftPanelWidth;
+                float splitterMinY = splitterPos.y;
+                float splitterMaxY = splitterPos.y + 8.0f;
+                
+                ImVec2 mousePos = splitterIO.MousePos;
+                bool isHovering = (mousePos.x >= splitterMinX && mousePos.x <= splitterMaxX &&
+                                   mousePos.y >= splitterMinY && mousePos.y <= splitterMaxY);
+                
+                if (isHovering) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+                }
+                
+                // 处理拖动
+                if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (isHovering || verticalSplitterDragging)) {
+                    verticalSplitterDragging = true;
+                    // 根据鼠标位置更新上下比例
+                    float newRatio = mousePos.y / totalHeight;
+                    if (newRatio > 0.2f && newRatio < 0.8f) {
+                        verticalSplitterRatio = newRatio;
+                        leftTopHeight = totalHeight * verticalSplitterRatio;
+                        leftBottomHeight = totalHeight - leftTopHeight - 8.0f;
+                    }
+                } else {
+                    verticalSplitterDragging = false;
+                }
+                
+                // 绘制分隔栏
+                ImU32 splitterColor = (isHovering || verticalSplitterDragging)
+                    ? IM_COL32(120, 120, 120, 255)
+                    : IM_COL32(80, 80, 80, 255);
+                ImDrawList* drawList = ImGui::GetWindowDrawList();
+                drawList->AddRectFilled(ImVec2(splitterMinX, splitterMinY), ImVec2(splitterMaxX, splitterMaxY), splitterColor);
+                
+                ImGui::PopStyleVar(2);
+            }
+            
+            // 下半部分：第5个标签页 - 分布可视化路径
+            {
+                ImGui::BeginChild("##bottom_section", ImVec2(leftPanelWidth - 4.0f, leftBottomHeight - 4.0f), true);
+                
+                if (ImGui::BeginTabBar("DistributionTabs")) {
+                    if (ImGui::BeginTabItem("分步可视化控制")) {
+                    // 分步模式开关
+                    ImGui::SeparatorText("分步可视化控制");
+                    
+                    if (ImGui::Checkbox("启用分步模式", &state.stepMode)) {
+                        state.currentStep = 0;
+                    }
+                    
+                    // 阶段选择
+                    if (!state.stepMode) {
+                        ImGui::Text("选择可视化阶段：");
+                        
+                        ImGui::RadioButton("仅树结构", (int*)&state.visStage, (int)VisStage::TREE_BUILD);
+                        ImGui::SameLine();
+                        ImGui::RadioButton("仅 QEF", (int*)&state.visStage, (int)VisStage::QEF_SOLVE);
+                        
+                        ImGui::RadioButton("仅网格", (int*)&state.visStage, (int)VisStage::MESH_GENERATE);
+                        ImGui::SameLine();
+                        ImGui::RadioButton("全部", (int*)&state.visStage, (int)VisStage::ALL);
+                    }
+                    
+                    // 分步模式控制
+                    if (state.stepMode) {
+                        ImGui::Text("算法阶段进度：");
+                        
+                        const char* stageName = "未知";
+                        switch (state.currentStep) {
+                            case 0: stageName = "四叉树构建中..."; break;
+                            case 1: stageName = "QEF 求解中..."; break;
+                            default: stageName = "网格生成中..."; break;
+                        }
+                        ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%s", stageName);
+                        
+                        float progress = static_cast<float>(state.currentStep) / 2.0f;
+                        ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f), "");
+                        
+                        ImGui::Text("步骤: %d / 2", state.currentStep);
+                        
+                        if (ImGui::ArrowButton("##prev", ImGuiDir_Left)) {
+                            if (state.currentStep > 0) state.currentStep--;
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::ArrowButton("##next", ImGuiDir_Right)) {
+                            if (state.currentStep < 2) state.currentStep++;
+                        }
+                    }
+                    
+                    ImGui::EndTabItem();
+                }
+                    ImGui::EndTabBar();
+                }
+                
+                ImGui::EndChild();
+            }
+            
+            ImGui::End();
+        }
+        
+        // ============================================================================
+        // 左右分隔栏
+        // ============================================================================
+        {
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+            
+            ImVec2 splitterPos = ImGui::GetCursorScreenPos();
+            ImGuiIO& splitterIO = ImGui::GetIO();
+            
+            // 分隔栏检测区域（垂直方向，手动计算）
+            float splitterMinX = splitterPos.x;
+            float splitterMaxX = splitterPos.x + 8.0f;
+            float splitterMinY = splitterPos.y;
+            float splitterMaxY = splitterPos.y + totalHeight;
+            
+            ImVec2 mousePos = splitterIO.MousePos;
+            bool isHovering = (mousePos.x >= splitterMinX && mousePos.x <= splitterMaxX &&
+                               mousePos.y >= splitterMinY && mousePos.y <= splitterMaxY);
+            
+            if (isHovering) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+            }
+            
+            // 处理拖动
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (isHovering || horizontalSplitterDragging)) {
+                horizontalSplitterDragging = true;
+                float newRatio = mousePos.x / totalWidth;
+                if (newRatio > 0.15f && newRatio < 0.4f) {
+                    horizontalSplitterRatio = newRatio;
+                }
+            } else {
+                horizontalSplitterDragging = false;
+            }
+            
+            // 绘制分隔栏
+            ImU32 splitterColor = (isHovering || horizontalSplitterDragging)
+                ? IM_COL32(120, 120, 120, 255)
+                : IM_COL32(80, 80, 80, 255);
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            drawList->AddRectFilled(ImVec2(splitterMinX, splitterMinY), ImVec2(splitterMaxX, splitterMaxY), splitterColor);
+            
+            ImGui::PopStyleVar(2);
+        }
+        
+        // 更新右侧画布尺寸
+        rightCanvasWidth = totalWidth - leftPanelWidth - 8.0f;
+        
         // ============================================================================
         // 右侧渲染画布
         // ============================================================================
-        const float canvasX = state.splitterPosition;
-        const float canvasWidth = (float)1280 - state.splitterPosition;
-        
-        ImGui::SetNextWindowPos(ImVec2(canvasX, 0), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(canvasWidth, (float)720), ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2(leftPanelWidth + 8.0f, 0), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(rightCanvasWidth, totalHeight), ImGuiCond_Always);
         
         {
             ImGui::Begin("渲染画布", nullptr,
                 ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoCollapse |
-                ImGuiWindowFlags_NoTitleBar);
+                ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoMove);
             
             // 获取 ImDrawList 用于渲染
             ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -358,12 +511,12 @@ int main(int, char**)
             
             // 计算画布中心（窗口中心）
             ImVec2 canvasCenter = ImVec2(
-                canvasTopLeft.x + canvasWidth * 0.5f,
-                canvasTopLeft.y + 720 * 0.5f
+                canvasTopLeft.x + rightCanvasWidth * 0.5f,
+                canvasTopLeft.y + totalHeight * 0.5f
             );
             
             // 缩放因子：画布单位转换为像素
-            float scale = canvasWidth / (canvasSize * 2.0f);
+            float scale = rightCanvasWidth / (canvasSize * 2.0f);
             
             // 创建渲染器
             Renderer renderer(drawList);
@@ -469,7 +622,7 @@ int main(int, char**)
             }
             
             // 移动光标到画布区域外
-            ImGui::SetCursorScreenPos(ImVec2(canvasX + canvasWidth, 720));
+            ImGui::SetCursorScreenPos(ImVec2(leftPanelWidth + 8.0f + rightCanvasWidth, totalHeight));
             
             ImGui::End();
         }
