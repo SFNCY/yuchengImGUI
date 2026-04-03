@@ -176,18 +176,11 @@ int main(int, char**)
             lastShapeCount = (int)state.shapes.size();
         }
         
-        // 检查选中形状的参数变化
-        if (state.selectedShape >= 0 && state.selectedShape < (int)state.shapes.size()) {
-            needsRebuild = true;
-        }
-
-        // ============================================================================
         // 重建四叉树和网格（如果需要）
         // ============================================================================
         if (needsRebuild) {
-            // 清理旧数据
-            dc::Quadtree::deleteTree(root);
-            root = nullptr;
+            // 清理旧数据 - createRoot 内部会调用 deleteTree(m_root) 清理旧树
+            // 注意：不需要在这里调用 deleteTree，因为 createRoot 已经管理树的清理
             mesh.Clear();
             
             // 获取复合 SDF
@@ -501,7 +494,7 @@ int main(int, char**)
     // ============================================================================
     // 清理
     // ============================================================================
-    delete root;
+    // delete root;  // 已注释：quadtree 是局部对象，析构时自动调用 deleteTree(m_root)，避免双重删除
     
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

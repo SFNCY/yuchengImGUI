@@ -174,7 +174,9 @@ size_t Quadtree::countNodes(const QuadtreeNode* node) {
 // 释放四叉树所有节点（递归）
 //=============================================================================
 void Quadtree::deleteTree(QuadtreeNode* node) {
-    if (!node) return;
+    if (!node) {
+        return;
+    }
     
     // 递归删除子节点
     deleteTree(node->nw);

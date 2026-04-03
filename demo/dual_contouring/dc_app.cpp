@@ -824,7 +824,9 @@ void RenderShapeEditor(AppState* state)
             const char* shape_name = (shape.type == ShapeType::Circle) ? "圆形" : "方形";
             
             // 选中高亮
-            if (state->selectedShape == i) {
+            bool should_highlight = (state->selectedShape == i);
+
+            if (should_highlight) {
                 ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.4f, 0.6f, 0.9f, 1.0f));
             }
@@ -839,7 +841,7 @@ void RenderShapeEditor(AppState* state)
                 state->selectedShape = i;
             }
             
-            if (state->selectedShape == i) {
+            if (should_highlight) {
                 ImGui::PopStyleColor(2);
             }
         }
