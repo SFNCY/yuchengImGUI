@@ -1,0 +1,90 @@
+{
+  "active_plan": "D:\\Code\\yuchengGit\\yuchengImGUI\\.sisyphus\\plans\\dual-contouring-learning.md",
+  "started_at": "2026-04-02T16:14:16.095Z",
+  "session_ids": [
+    "ses_2b113c26fffe63PUkQAFC713k7",
+    "ses_2b10611aeffentUZH7g0a7rxLR",
+    "ses_2b105f0a4ffeD6P0Aviimjh6dG",
+    "ses_2b105d478ffeHo9xxt51segCZm",
+    "ses_2b1063904ffeAAcbNh60sr7zzj",
+    "ses_2b0ffc50affepXKPhT2Mu2pRDS",
+    "ses_2b0fd51bbffeqjsHI880aJYV1w",
+    "ses_2b0fadfc4ffeKyvPfUqsEBkaky",
+    "ses_2b0f8fe9cffedxvQbxFSp3NuZF",
+    "ses_2b0f640d4ffekzLyWcs5t9Npmi",
+    "ses_2b0f613d4ffezHBkzFCdWQEBZ5",
+    "ses_2b0f5e997ffed4F7a6cLgNS8eA",
+    "ses_2b0f103a0ffe56kp4FpCzdhCHB",
+    "ses_2b0dd5c5affeNOqkX8Gu2WLvSc",
+    "ses_2b0d458e5ffefOnZ6jd0wsnD72",
+    "ses_2b0d4442dffeiwp8FTizO2751T",
+    "ses_2b0d42491ffePNa8ap5mZ1USCT",
+    "ses_2b0d433d4ffe99Jn0UPC29lgm0"
+  ],
+  "plan_name": "dual-contouring-learning",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "项目脚手架 + CMake 配置",
+      "session_id": "ses_2b1063904ffeAAcbNh60sr7zzj",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-02T16:20:36.060Z"
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "Hermite 数据存储",
+      "session_id": "ses_2b0ffc50affepXKPhT2Mu2pRDS",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-02T16:23:57.653Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "QEF 求解器（SVD 分解）",
+      "session_id": "ses_2b0fd51bbffeqjsHI880aJYV1w",
+      "agent": "Sisyphus-Junior",
+      "category": "ultrabrain",
+      "updated_at": "2026-04-02T16:26:41.418Z"
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "Dual Contouring 核心算法",
+      "session_id": "ses_2b0fadfc4ffeKyvPfUqsEBkaky",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-02T16:28:46.340Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "网格生成与渲染",
+      "session_id": "ses_2b0f8fe9cffedxvQbxFSp3NuZF",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-02T16:31:43.193Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "ImGui 控制面板",
+      "session_id": "ses_2b0f640d4ffekzLyWcs5t9Npmi",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-02T16:33:22.887Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "参数实时调节",
+      "session_id": "ses_2b0d458e5ffefOnZ6jd0wsnD72",
+      "agent": "oracle",
+      "updated_at": "2026-04-02T17:10:14.924Z"
+    }
+  }
+}
