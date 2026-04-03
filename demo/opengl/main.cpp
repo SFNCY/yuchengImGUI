@@ -104,13 +104,30 @@ int main(int, char**)
     // - Read 'docs/FONTS.md' for more instructions and details.
     // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
     // - Our Emscripten build process allows embedding fonts to be accessible at runtime from the "fonts/" folder. See Makefile.emscripten for details.
-    //io.Fonts->AddFontDefault();
-    //io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\segoeui.ttf", 18.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
-    //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
-    //IM_ASSERT(font != nullptr);
+    // Load Chinese font: Try multiple paths
+    ImFont* font = nullptr;
+    
+    // Try project fonts folder (relative to working directory at runtime)
+    const char* font_paths[] = {
+        "../../fonts/Pang正道标题体.ttf",
+        "fonts/Pang正道标题体.ttf",
+        "C:/Windows/Fonts/msyh.ttc",     // Microsoft YaHei
+        "C:/Windows/Fonts/simhei.ttf",   // SimHei
+    };
+    
+    for (int i = 0; i < IM_ARRAYSIZE(font_paths); i++) {
+        font = io.Fonts->AddFontFromFileTTF(font_paths[i], 20.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
+        if (font != nullptr) {
+            fprintf(stderr, "[OK] Loaded Chinese font from: %s\n", font_paths[i]);
+            break;
+        } else {
+            fprintf(stderr, "[WARN] Failed to load font from: %s\n", font_paths[i]);
+        }
+    }
+    
+    if (font == nullptr) {
+        fprintf(stderr, "[ERROR] Could not load any Chinese font! Using default font.\n");
+    }
 
     // Our state
     bool show_demo_window = true;

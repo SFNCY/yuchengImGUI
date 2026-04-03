@@ -91,6 +91,31 @@ int main(int, char**)
 #endif
     ImGui_ImplOpenGL3_Init(glsl_version);
 
+    // Load Chinese font: Try multiple paths
+    ImFont* font = nullptr;
+    
+    // Try project fonts folder (relative to working directory at runtime)
+    const char* font_paths[] = {
+        "../../fonts/Pang正道标题体.ttf",
+        "fonts/Pang正道标题体.ttf",
+        "C:/Windows/Fonts/msyh.ttc",     // Microsoft YaHei
+        "C:/Windows/Fonts/simhei.ttf",   // SimHei
+    };
+    
+    for (int i = 0; i < IM_ARRAYSIZE(font_paths); i++) {
+        font = io.Fonts->AddFontFromFileTTF(font_paths[i], 20.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
+        if (font != nullptr) {
+            fprintf(stderr, "[OK] Loaded Chinese font from: %s\n", font_paths[i]);
+            break;
+        } else {
+            fprintf(stderr, "[WARN] Failed to load font from: %s\n", font_paths[i]);
+        }
+    }
+    
+    if (font == nullptr) {
+        fprintf(stderr, "[ERROR] Could not load any Chinese font! Using default font.\n");
+    }
+
     // ============================================================================
     // 应用状态初始化
     // ============================================================================
