@@ -289,12 +289,6 @@ int main(int, char**)
                         ImGui::SameLine();
                         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(%.3f)", state.qefThreshold);
                         
-                        // 上下分隔比例滑块（调试用）
-                        ImGui::Separator();
-                        ImGui::Text("布局调试：");
-                        ImGui::SliderFloat("上下比例", &verticalSplitterRatio, 0.2f, 0.8f, "%.2f");
-                        ImGui::SliderFloat("左右比例", &horizontalSplitterRatio, 0.15f, 0.4f, "%.2f");
-                        
                         ImGui::EndTabItem();
                     }
                     // 可视化选项标签
@@ -451,18 +445,16 @@ int main(int, char**)
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
             
-            ImVec2 splitterPos = ImGui::GetCursorScreenPos();
             ImGuiIO& splitterIO = ImGui::GetIO();
             
-            // 分隔栏检测区域（垂直方向，手动计算）
-            float splitterMinX = splitterPos.x;
-            float splitterMaxX = splitterPos.x + 8.0f;
-            float splitterMinY = splitterPos.y;
-            float splitterMaxY = splitterPos.y + totalHeight;
+            // 分隔栏区域（使用固定的屏幕坐标）
+            // 分隔栏位于 leftPanelWidth 到 leftPanelWidth+8.0f
+            float splitterScreenX = leftPanelWidth;
+            float splitterThickness = 8.0f;
             
             ImVec2 mousePos = splitterIO.MousePos;
-            bool isHovering = (mousePos.x >= splitterMinX && mousePos.x <= splitterMaxX &&
-                               mousePos.y >= splitterMinY && mousePos.y <= splitterMaxY);
+            bool isHovering = (mousePos.x >= splitterScreenX && mousePos.x <= splitterScreenX + splitterThickness &&
+                               mousePos.y >= 0.0f && mousePos.y <= totalHeight);
             
             if (isHovering) {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
@@ -474,6 +466,11 @@ int main(int, char**)
                 float newRatio = mousePos.x / totalWidth;
                 if (newRatio > 0.15f && newRatio < 0.4f) {
                     horizontalSplitterRatio = newRatio;
+                    // 重新计算 leftPanelWidth
+                    leftPanelWidth = totalWidth * horizontalSplitterRatio;
+                    if (leftPanelWidth < minPanelWidth) leftPanelWidth = minPanelWidth;
+                    if (leftPanelWidth > totalWidth - minPanelWidth) leftPanelWidth = totalWidth - minPanelWidth;
+                    splitterScreenX = leftPanelWidth;
                 }
             } else {
                 horizontalSplitterDragging = false;
@@ -484,7 +481,11 @@ int main(int, char**)
                 ? IM_COL32(120, 120, 120, 255)
                 : IM_COL32(80, 80, 80, 255);
             ImDrawList* drawList = ImGui::GetWindowDrawList();
-            drawList->AddRectFilled(ImVec2(splitterMinX, splitterMinY), ImVec2(splitterMaxX, splitterMaxY), splitterColor);
+            drawList->AddRectFilled(
+                ImVec2(splitterScreenX, 0.0f),
+                ImVec2(splitterScreenX + splitterThickness, totalHeight),
+                splitterColor
+            );
             
             ImGui::PopStyleVar(2);
         }
