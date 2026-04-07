@@ -296,6 +296,7 @@ int main(int, char**)
                         // SDF 相关可视化
                         if (ImGui::CollapsingHeader("SDF 可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
                             ImGui::Checkbox("SDF 等值线", &state.showSDFContour);
+                            ImGui::Checkbox("SDF 热力图", &state.showSDFHeatmap);
                             ImGui::Checkbox("法线向量", &state.showNormals);
                         }
                         
@@ -308,6 +309,7 @@ int main(int, char**)
                         // 对偶网格可视化
                         if (ImGui::CollapsingHeader("对偶网格可视化", ImGuiTreeNodeFlags_DefaultOpen)) {
                             ImGui::Checkbox("对偶网格", &state.showDualMesh);
+                            ImGui::Checkbox("网格顶点", &state.showMeshVertices);
                             ImGui::Checkbox("QEF 交点", &state.showQEFIntersections);
                         }
                         ImGui::EndTabItem();
@@ -519,9 +521,6 @@ int main(int, char**)
             // 缩放因子：画布单位转换为像素
             float scale = rightCanvasWidth / (canvasSize * 2.0f);
             
-            // 创建渲染器
-            Renderer renderer(drawList);
-            
             // 坐标转换辅助函数：将世界坐标转换为屏幕坐标
             auto worldToScreen = [canvasCenter, scale](ImVec2 worldPos) -> ImVec2 {
                 return ImVec2(
@@ -529,6 +528,10 @@ int main(int, char**)
                     canvasCenter.y - worldPos.y * scale  // Y 轴翻转
                 );
             };
+            
+            // 创建渲染器
+            Renderer renderer(drawList);
+            renderer.SetWorldToScreen(worldToScreen);
             
             // 绘制背景网格
             ImU32 gridColor = IM_COL32(40, 40, 40, 255);
@@ -578,9 +581,15 @@ int main(int, char**)
                 }
             }
             
+            // 绘制 SDF 热力图
+            if (state.showSDFHeatmap && sdf) {
+                ImVec4 heatmapBounds = ImVec4(-canvasSize, -canvasSize, canvasSize, canvasSize);
+                renderer.DrawSDFHeatmap(sdf, -2.0f, 2.0f, heatmapBounds, 64);
+            }
+            
             // 绘制四叉树结构
             if (state.showQuadtreeBounds && root) {
-                RenderTreeStructure(root, &renderer);
+                RenderTreeStructure(&state, root, &renderer);
             }
             
             // 绘制 QEF 求解过程
@@ -594,8 +603,18 @@ int main(int, char**)
                 dc::RenderMesh(mesh, &renderer, meshColor, 1.5f);
             }
             
-            // 绘制法线（如果在可视化选项中启用）
-            // Note: 法线绘制功能待实现
+            // 绘制网格顶点（点云）
+            if (state.showMeshVertices && mesh.IsValid()) {
+                for (const dc::MeshVertex& v : mesh.vertices) {
+                    ImVec2 screenPos = worldToScreen(v.position);
+                    renderer.DrawCircleFilled(screenPos, 3.0f, IM_COL32(100, 200, 255, 255));
+                }
+            }
+            
+            // 绘制法线向量
+            if (state.showNormals && root) {
+                RenderNormals(&state, root, &renderer, sdf);
+            }
             
             // 绘制形状编辑器中的形状
             for (int i = 0; i < (int)state.shapes.size(); i++) {

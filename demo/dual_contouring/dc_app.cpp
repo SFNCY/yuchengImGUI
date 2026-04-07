@@ -26,10 +26,13 @@ static constexpr ImU32 COLOR_HERMITE_POINT = IM_COL32(100, 255, 100, 255);  ///<
 static constexpr ImU32 COLOR_QEF_SOLVED = IM_COL32(100, 100, 255, 255);    ///< QEF 解算点 - 蓝色
 static constexpr ImU32 COLOR_QEF_LINE = IM_COL32(255, 255, 100, 255);      ///< QEF 向量 - 黄色
 
+/// @brief 法线向量颜色
+static constexpr ImU32 COLOR_NORMAL = IM_COL32(255, 100, 255, 255);         ///< 法线向量 - 紫红色
+
 // ============================================================================
 // RenderTreeStructure - 可视化四叉树结构
 // ============================================================================
-void RenderTreeStructure(const dc::QuadtreeNode* root, Renderer* renderer)
+void RenderTreeStructure(const AppState* state, const dc::QuadtreeNode* root, Renderer* renderer)
 {
     if (!root || !renderer)
         return;
@@ -75,18 +78,20 @@ void RenderTreeStructure(const dc::QuadtreeNode* root, Renderer* renderer)
         float size = node->bounds.halfSize * 2.0f;
         
         // 绘制节点边界框（正方形）
+        // 先将世界坐标转换为屏幕坐标
+        ImVec2 screenCenter = renderer->WorldToScreen(node->bounds.center);
         renderer->DrawQuad(
-            node->bounds.center,
+            screenCenter,
             size,
             color,
             0.0f,   // 无旋转
             thickness
         );
         
-        // 如果是叶子节点，在中心绘制一个点
-        if (!node->subdivided) {
+        // 如果是叶子节点，在中心绘制一个点（仅当 showQuadtreeNodes 启用时）
+        if (!node->subdivided && state && state->showQuadtreeNodes) {
             renderer->DrawCircleFilled(
-                node->bounds.center,
+                screenCenter,
                 3.0f,
                 color
             );
@@ -141,35 +146,42 @@ void RenderQFESolving(const dc::QuadtreeNode* root, Renderer* renderer)
             const float hs = node->bounds.halfSize;
             const ImVec2& center = node->bounds.center;
             
+            // 先将世界坐标转换为屏幕坐标
+            ImVec2 screenCenter = renderer->WorldToScreen(center);
+            ImVec2 screenTop = renderer->WorldToScreen(ImVec2(center.x, center.y + hs));
+            ImVec2 screenBottom = renderer->WorldToScreen(ImVec2(center.x, center.y - hs));
+            ImVec2 screenLeft = renderer->WorldToScreen(ImVec2(center.x - hs, center.y));
+            ImVec2 screenRight = renderer->WorldToScreen(ImVec2(center.x + hs, center.y));
+            
             // 绘制 Hermite 交点（边界中点）
             // 上边界中点
             renderer->DrawCircleFilled(
-                ImVec2(center.x, center.y + hs),
+                screenTop,
                 4.0f,
                 COLOR_HERMITE_POINT
             );
             // 下边界中点
             renderer->DrawCircleFilled(
-                ImVec2(center.x, center.y - hs),
+                screenBottom,
                 4.0f,
                 COLOR_HERMITE_POINT
             );
             // 左边界中点
             renderer->DrawCircleFilled(
-                ImVec2(center.x - hs, center.y),
+                screenLeft,
                 4.0f,
                 COLOR_HERMITE_POINT
             );
             // 右边界中点
             renderer->DrawCircleFilled(
-                ImVec2(center.x + hs, center.y),
+                screenRight,
                 4.0f,
                 COLOR_HERMITE_POINT
             );
             
             // 绘制 QEF 解算点（节点中心）- 使用较大圆点
             renderer->DrawCircleFilled(
-                center,
+                screenCenter,
                 6.0f,
                 COLOR_QEF_SOLVED
             );
@@ -177,29 +189,29 @@ void RenderQFESolving(const dc::QuadtreeNode* root, Renderer* renderer)
             // 绘制从中心到边界的连线（表示 QEF 求解方向）
             // 上
             renderer->DrawLine(
-                center,
-                ImVec2(center.x, center.y + hs),
+                screenCenter,
+                screenTop,
                 COLOR_QEF_LINE,
                 1.0f
             );
             // 下
             renderer->DrawLine(
-                center,
-                ImVec2(center.x, center.y - hs),
+                screenCenter,
+                screenBottom,
                 COLOR_QEF_LINE,
                 1.0f
             );
             // 左
             renderer->DrawLine(
-                center,
-                ImVec2(center.x - hs, center.y),
+                screenCenter,
+                screenLeft,
                 COLOR_QEF_LINE,
                 1.0f
             );
             // 右
             renderer->DrawLine(
-                center,
-                ImVec2(center.x + hs, center.y),
+                screenCenter,
+                screenRight,
                 COLOR_QEF_LINE,
                 1.0f
             );
@@ -210,6 +222,121 @@ void RenderQFESolving(const dc::QuadtreeNode* root, Renderer* renderer)
         if (node->ne) stack[stackTop++] = {node->ne};
         if (node->sw) stack[stackTop++] = {node->sw};
         if (node->se) stack[stackTop++] = {node->se};
+    }
+}
+
+// ============================================================================
+// RenderNormals - 可视化 Hermite 交点处的法线向量
+// ============================================================================
+//
+// 从 Hermite 交点位置绘制法线向量：
+// 1. 遍历四叉树找到所有叶子节点
+// 2. 对每个叶子节点，调用 FindEdgeIntersections 获取边缘交点
+// 3. 遍历所有边缘（bottom, top, left, right）的 HermiteData
+// 4. 在每个 HermiteData.position 位置，沿 normal 方向绘制固定长度的线段
+//
+// 参数：
+//   @param state 应用程序状态指针（检查 showNormals 开关）
+//   @param root 四叉树根节点指针
+//   @param renderer 渲染器指针
+//   @param sdf SDF 对象指针
+// ============================================================================
+void RenderNormals(const AppState* state, const dc::QuadtreeNode* root, Renderer* renderer, const SDFBase* sdf)
+{
+    // 安全检查
+    if (!state || !root || !renderer || !sdf)
+        return;
+    
+    // 如果 showNormals 未启用，不绘制任何内容
+    if (!state->showNormals)
+        return;
+    
+    // 法线线段长度（世界单位）
+    const float normalLength = 0.15f;
+    
+    // 遍历四叉树，找到所有叶子节点
+    struct StackItem {
+        const dc::QuadtreeNode* node;
+    };
+    
+    StackItem stack[64];
+    int stackTop = 0;
+    stack[stackTop++] = {root};
+    
+    while (stackTop > 0) {
+        stackTop--;
+        const dc::QuadtreeNode* node = stack[stackTop].node;
+        
+        if (!node)
+            continue;
+        
+        // 如果节点已细分，继续遍历子节点
+        if (node->subdivided) {
+            if (node->nw) stack[stackTop++] = {node->nw};
+            if (node->ne) stack[stackTop++] = {node->ne};
+            if (node->sw) stack[stackTop++] = {node->sw};
+            if (node->se) stack[stackTop++] = {node->se};
+            continue;
+        }
+        
+        // 叶子节点：获取边缘交点并绘制法线
+        dc::EdgeIntersections edges = dc::FindEdgeIntersections(const_cast<dc::QuadtreeNode*>(node), const_cast<SDFBase*>(sdf));
+        
+        // 绘制 bottom 边缘的法线
+        for (const auto& h : edges.bottom) {
+            ImVec2 end = ImVec2(
+                h.position.x + h.normal.x * normalLength,
+                h.position.y + h.normal.y * normalLength
+            );
+            renderer->DrawLine(
+                renderer->WorldToScreen(h.position),
+                renderer->WorldToScreen(end),
+                COLOR_NORMAL,
+                2.0f
+            );
+        }
+        
+        // 绘制 top 边缘的法线
+        for (const auto& h : edges.top) {
+            ImVec2 end = ImVec2(
+                h.position.x + h.normal.x * normalLength,
+                h.position.y + h.normal.y * normalLength
+            );
+            renderer->DrawLine(
+                renderer->WorldToScreen(h.position),
+                renderer->WorldToScreen(end),
+                COLOR_NORMAL,
+                2.0f
+            );
+        }
+        
+        // 绘制 left 边缘的法线
+        for (const auto& h : edges.left) {
+            ImVec2 end = ImVec2(
+                h.position.x + h.normal.x * normalLength,
+                h.position.y + h.normal.y * normalLength
+            );
+            renderer->DrawLine(
+                renderer->WorldToScreen(h.position),
+                renderer->WorldToScreen(end),
+                COLOR_NORMAL,
+                2.0f
+            );
+        }
+        
+        // 绘制 right 边缘的法线
+        for (const auto& h : edges.right) {
+            ImVec2 end = ImVec2(
+                h.position.x + h.normal.x * normalLength,
+                h.position.y + h.normal.y * normalLength
+            );
+            renderer->DrawLine(
+                renderer->WorldToScreen(h.position),
+                renderer->WorldToScreen(end),
+                COLOR_NORMAL,
+                2.0f
+            );
+        }
     }
 }
 
@@ -240,16 +367,16 @@ void RenderAllStages(const AppState* state, Renderer* renderer, const dc::Quadtr
         switch (state->currentStep) {
             case 0:
                 // 阶段1：只渲染四叉树构建
-                RenderTreeStructure(root, renderer);
+                RenderTreeStructure(state, root, renderer);
                 break;
             case 1:
                 // 阶段2：渲染四叉树 + QEF 求解
-                RenderTreeStructure(root, renderer);
+                RenderTreeStructure(state, root, renderer);
                 RenderQFESolving(root, renderer);
                 break;
             default:
                 // 阶段3+：渲染全部阶段
-                RenderTreeStructure(root, renderer);
+                RenderTreeStructure(state, root, renderer);
                 RenderQFESolving(root, renderer);
                 // 网格渲染由调用方负责（需要 mesh 数据）
                 break;
@@ -258,7 +385,7 @@ void RenderAllStages(const AppState* state, Renderer* renderer, const dc::Quadtr
         // 连续模式下直接根据 visStage 渲染
         switch (state->visStage) {
             case VisStage::TREE_BUILD:
-                RenderTreeStructure(root, renderer);
+                RenderTreeStructure(state, root, renderer);
                 break;
             case VisStage::QEF_SOLVE:
                 RenderQFESolving(root, renderer);
@@ -268,7 +395,7 @@ void RenderAllStages(const AppState* state, Renderer* renderer, const dc::Quadtr
                 break;
             case VisStage::ALL:
                 // 全部渲染
-                RenderTreeStructure(root, renderer);
+                RenderTreeStructure(state, root, renderer);
                 RenderQFESolving(root, renderer);
                 break;
         }

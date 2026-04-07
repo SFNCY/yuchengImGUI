@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include <vector>
 #include <cmath>
+#include <functional>
 
 // 包含 SDF 定义
 #include "dc_sdf.h"
@@ -35,10 +36,10 @@ public:
 
     /// @brief 构造函数
     /// @param draw_list ImDrawList 指针，通常通过 ImGui::GetWindowDrawList() 获取
-    explicit Renderer(ImDrawList* draw_list) : m_draw_list(draw_list) {}
+    explicit Renderer(ImDrawList* draw_list) : m_draw_list(draw_list), m_worldToScreen(nullptr) {}
 
     /// @brief 默认构造函数（创建空渲染器）
-    Renderer() : m_draw_list(nullptr) {}
+    Renderer() : m_draw_list(nullptr), m_worldToScreen(nullptr) {}
 
     /// @brief 析构函数
     ~Renderer() = default;
@@ -71,6 +72,24 @@ public:
     // ========================================================================
     // 基础绘制方法
     // ========================================================================
+
+    /// @brief 设置世界坐标到屏幕坐标的变换函数
+    /// @param worldToScreen 变换函数，输入世界坐标，返回屏幕坐标
+    void SetWorldToScreen(std::function<ImVec2(ImVec2)> worldToScreen)
+    {
+        m_worldToScreen = worldToScreen;
+    }
+    
+    /// @brief 使用已设置的世界坐标到屏幕坐标变换函数
+    /// @param worldPos 世界坐标
+    /// @return 屏幕坐标（如果变换函数已设置），否则返回输入的世界坐标
+    ImVec2 WorldToScreen(ImVec2 worldPos) const
+    {
+        if (m_worldToScreen) {
+            return m_worldToScreen(worldPos);
+        }
+        return worldPos;  // fallback: 无变换函数时返回原坐标
+    }
 
     /// @brief 设置 ImDrawList 指针
     /// @param draw_list ImDrawList 指针
@@ -246,6 +265,21 @@ public:
                                const ImVec4& bounds = ImVec4(0.0f, 0.0f, 800.0f, 600.0f),
                                int resolution = 50);
 
+    /// @brief 绘制 SDF 热力图
+    /// @param sdf 指向 SDF 基类的指针
+    /// @param minValue 热力图最小值（对应蓝色）
+    /// @param maxValue 热力图最大值（对应红色）
+    /// @param bounds 搜索区域边界
+    /// @param resolution 采样分辨率
+    ///
+    /// 使用颜色渐变显示 SDF 值分布：
+    /// - 负值（内部）= 蓝色
+    /// - 正值（外部）= 红色
+    /// - 零等值线附近 = 白色过渡
+    void DrawSDFHeatmap(const SDFBase* sdf, float minValue, float maxValue,
+                         const ImVec4& bounds = ImVec4(0.0f, 0.0f, 800.0f, 600.0f),
+                         int resolution = 64);
+
 private:
     /// @brief 计算 SDF 在给定点的值
     /// @param sdf SDF 指针
@@ -268,6 +302,29 @@ private:
     /// @return 交点位置
     ImVec2 Interpolate(ImVec2 p1, ImVec2 p2, float v1, float v2, float isoValue) const;
 
+    /// @brief 根据 SDF 值获取热力图颜色
+    /// @param sdfValue SDF 值
+    /// @param minValue 热力图最小值
+    /// @param maxValue 热力图最大值
+    /// @param zeroOffset 零值偏移量（相对于 [0,1] 范围）
+    /// @return 热力图颜色
+    ImU32 GetHeatmapColor(float sdfValue, float minValue, float maxValue, float zeroOffset) const;
+
+    /// @brief 插值颜色
+    /// @param c1 颜色1
+    /// @param c2 颜色2
+    /// @param c3 颜色3
+    /// @param avgValue 平均 SDF 值
+    /// @param minValue 热力图最小值
+    /// @param maxValue 热力图最大值
+    /// @param zeroOffset 零值偏移量
+    /// @return 插值后的颜色
+    ImU32 InterpolateColor(ImU32 c1, ImU32 c2, ImU32 c3, float avgValue,
+                           float minValue, float maxValue, float zeroOffset) const;
+
     /// ImDrawList 指针（由 ImGui 管理）
     ImDrawList* m_draw_list = nullptr;
+
+    /// 世界坐标到屏幕坐标的变换函数
+    std::function<ImVec2(ImVec2)> m_worldToScreen;
 };

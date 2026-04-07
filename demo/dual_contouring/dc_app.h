@@ -92,6 +92,10 @@ struct AppState {
     /// @details 使用 Marching Squares 算法绘制 SDF=0 的轮廓
     bool showSDFContour = true;
     
+    /// @brief 是否显示 SDF 热力图
+    /// @details 使用颜色渐变显示 SDF 值分布
+    bool showSDFHeatmap = false;
+    
     /// @brief 是否显示四叉树边界
     /// @details 绘制所有叶子节点的边界框
     bool showQuadtreeBounds = true;
@@ -103,6 +107,10 @@ struct AppState {
     /// @brief 是否显示对偶网格
     /// @details 绘制顶点和边，形成对偶网格
     bool showDualMesh = true;
+    
+    /// @brief 是否显示网格顶点（点云）
+    /// @details 在每个 QEF 求解的顶点位置绘制一个点
+    bool showMeshVertices = false;
     
     /// @brief 是否显示 QEF 交点
     /// @details 绘制法线与单元边界的交点（调试用）
@@ -270,10 +278,11 @@ void UpdateStatsFromMesh(AppState* state, const dc::DualMesh* mesh);
 // - 不同深度使用不同颜色区分
 //
 // 参数：
+//   @param state 应用状态指针（可为 nullptr，用于控制可视化选项）
 //   @param root 四叉树根节点指针（可为 nullptr）
 //   @param renderer 渲染器指针（用于绘制）
 // ============================================================================
-void RenderTreeStructure(const dc::QuadtreeNode* root, Renderer* renderer);
+void RenderTreeStructure(const AppState* state, const dc::QuadtreeNode* root, Renderer* renderer);
 
 // ============================================================================
 // RenderQFESolving - 可视化 QEF 求解过程
@@ -291,6 +300,25 @@ void RenderTreeStructure(const dc::QuadtreeNode* root, Renderer* renderer);
 //   @param renderer 渲染器指针
 // ============================================================================
 void RenderQFESolving(const dc::QuadtreeNode* root, Renderer* renderer);
+
+// ============================================================================
+// RenderNormals - 可视化 SDF 法线向量
+// ============================================================================
+//
+// 在每个叶子节点中心绘制 SDF 梯度的法线方向，
+// 用于可视化 SDF 表面的法线向量。
+//
+// 绘制内容：
+// - 从叶子节点中心出发，沿法线方向绘制一条线段
+// - 法线通过有限差分方法计算 SDF 梯度得到
+//
+// 参数：
+//   @param state 应用程序状态指针（用于获取 showNormals 配置）
+//   @param root 四叉树根节点指针
+//   @param renderer 渲染器指针
+//   @param sdf SDF 对象指针（用于计算梯度）
+// ============================================================================
+void RenderNormals(const AppState* state, const dc::QuadtreeNode* root, Renderer* renderer, const SDFBase* sdf);
 
 // ============================================================================
 // RenderAllStages - 根据当前阶段渲染

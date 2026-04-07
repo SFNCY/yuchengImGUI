@@ -149,28 +149,36 @@ void Renderer::DrawSDFContour(const SDFBase* sdf, float isoValue, ImU32 color,
             edges[2] = Interpolate(p2, p3, values[2], values[3], isoValue); // 上边
             edges[3] = Interpolate(p0, p2, values[0], values[2], isoValue); // 左边
 
+            // 世界坐标到屏幕坐标变换（如果有设置）
+            auto transform = [this](ImVec2 p) -> ImVec2 {
+                if (m_worldToScreen) {
+                    return m_worldToScreen(p);
+                }
+                return p;
+            };
+
             // 根据索引绘制边缘
             int edge_mask = MS_EDGE_TABLE[index];
 
             // 下边 (0-1)
             if (edge_mask & 0x1)
             {
-                m_draw_list->AddLine(edges[0], edges[1], color);
+                m_draw_list->AddLine(transform(edges[0]), transform(edges[1]), color);
             }
             // 右边 (1-3)
             if (edge_mask & 0x2)
             {
-                m_draw_list->AddLine(edges[1], edges[3], color);
+                m_draw_list->AddLine(transform(edges[1]), transform(edges[3]), color);
             }
             // 上边 (2-3)
             if (edge_mask & 0x4)
             {
-                m_draw_list->AddLine(edges[2], edges[3], color);
+                m_draw_list->AddLine(transform(edges[2]), transform(edges[3]), color);
             }
             // 左边 (0-2)
             if (edge_mask & 0x8)
             {
-                m_draw_list->AddLine(edges[3], edges[0], color);
+                m_draw_list->AddLine(transform(edges[3]), transform(edges[0]), color);
             }
         }
     }
@@ -313,4 +321,186 @@ void Renderer::DrawSDFContourFilled(const SDFBase* sdf, float isoValue,
             }
         }
     }
+}
+
+// ============================================================================
+// DrawSDFHeatmap - 绘制 SDF 热力图
+// ============================================================================
+//
+// 使用颜色渐变显示 SDF 值分布：
+// - 负值（内部）= 蓝色
+// - 正值（外部）= 红色
+// - 零等值线附近 = 白色过渡
+//
+// 颜色映射策略：
+// - minValue -> Blue (0, 0, 255)
+// - 0 (isocontour) -> White (255, 255, 255)
+// - maxValue -> Red (255, 0, 0)
+//
+// 由于 SDF 值范围可能不对称（如 -0.5 到 1.0），
+// 我们使用一个偏移量将零值映射到白色
+// ============================================================================
+void Renderer::DrawSDFHeatmap(const SDFBase* sdf, float minValue, float maxValue,
+                                const ImVec4& bounds, int resolution)
+{
+    if (!m_draw_list || !sdf || resolution <= 0)
+        return;
+
+    // 确保 minValue < maxValue
+    if (minValue >= maxValue) {
+        minValue = -1.0f;
+        maxValue = 1.0f;
+    }
+
+    float minX = bounds.x;
+    float minY = bounds.y;
+    float maxX = bounds.z;
+    float maxY = bounds.w;
+
+    float stepX = (maxX - minX) / static_cast<float>(resolution);
+    float stepY = (maxY - minY) / static_cast<float>(resolution);
+
+    // 用于存储每个单元格的四个角点的颜色
+    ImU32 colors[4];
+
+    // 预计算白色（零值等值线颜色）
+    const ImU32 COLOR_WHITE = IM_COL32(255, 255, 255, 255);
+    const ImU32 COLOR_BLUE = IM_COL32(50, 50, 255, 255);    // 内部（负值）
+    const ImU32 COLOR_RED = IM_COL32(255, 50, 50, 255);      // 外部（正值）
+
+    // 计算零值偏移量
+    // 如果 minValue <= 0 <= maxValue，零值应该在颜色范围内
+    float zeroOffset = 0.0f;
+    if (minValue < 0 && maxValue > 0) {
+        // 零值在范围内，计算相对于范围的偏移
+        zeroOffset = -minValue / (maxValue - minValue);  // 0 到 1 之间的值
+    }
+
+    // 遍历网格的每个单元格
+    for (int j = 0; j < resolution; j++)
+    {
+        for (int i = 0; i < resolution; i++)
+        {
+            // 计算当前单元格四个角点的坐标
+            ImVec2 p0 = ImVec2(minX + i * stepX,     minY + j * stepY);     // 左下
+            ImVec2 p1 = ImVec2(minX + (i + 1) * stepX, minY + j * stepY);   // 右下
+            ImVec2 p2 = ImVec2(minX + i * stepX,     minY + (j + 1) * stepY); // 左上
+            ImVec2 p3 = ImVec2(minX + (i + 1) * stepX, minY + (j + 1) * stepY); // 右上
+
+            // 计算四个角点的 SDF 值
+            float values[4];
+            values[0] = SampleSDF(sdf, p0);
+            values[1] = SampleSDF(sdf, p1);
+            values[2] = SampleSDF(sdf, p2);
+            values[3] = SampleSDF(sdf, p3);
+
+            // 为每个角点计算颜色
+            for (int k = 0; k < 4; k++) {
+                colors[k] = GetHeatmapColor(values[k], minValue, maxValue, zeroOffset);
+            }
+
+            // 世界坐标到屏幕坐标变换（如果有设置）
+            auto transform = [this](ImVec2 p) -> ImVec2 {
+                if (m_worldToScreen) {
+                    return m_worldToScreen(p);
+                }
+                return p;
+            };
+
+            // 构建四边形顶点（逆时针顺序）
+            ImVec2 quad[4] = { p0, p1, p3, p2 };
+
+            // 使用四个角点的颜色绘制渐变填充四边形
+            // ImGui 的 AddConvexPolyFilledWithUV 不支持颜色数组，
+            // 所以我们使用四个三角形来近似渐变效果
+            // 或者使用 AddQuadFilled（但它不支持每顶点不同颜色）
+            
+            // 方法：使用两个三角形，每个三角形使用线性插值的颜色
+            // 三角形1: p0, p1, p3
+            // 三角形2: p0, p3, p2
+            
+            // 计算每个三角形的平均颜色
+            ImU32 tri1Color = InterpolateColor(
+                colors[0], colors[1], colors[3],
+                (values[0] + values[1] + values[3]) / 3.0f,
+                minValue, maxValue, zeroOffset
+            );
+            ImU32 tri2Color = InterpolateColor(
+                colors[0], colors[3], colors[2],
+                (values[0] + values[3] + values[2]) / 3.0f,
+                minValue, maxValue, zeroOffset
+            );
+
+            // 绘制第一个三角形 (p0, p1, p3)
+            m_draw_list->AddTriangleFilled(transform(p0), transform(p1), transform(p3), tri1Color);
+            // 绘制第二个三角形 (p0, p3, p2)
+            m_draw_list->AddTriangleFilled(transform(p0), transform(p3), transform(p2), tri2Color);
+        }
+    }
+}
+
+// ============================================================================
+// GetHeatmapColor - 根据 SDF 值获取热力图颜色
+// ============================================================================
+ImU32 Renderer::GetHeatmapColor(float sdfValue, float minValue, float maxValue, float zeroOffset) const
+{
+    // 归一化 SDF 值到 [0, 1] 范围
+    float normalized = (sdfValue - minValue) / (maxValue - minValue);
+    normalized = std::max(0.0f, std::min(1.0f, normalized));
+
+    // 颜色分量
+    float r, g, b;
+
+    if (normalized < zeroOffset) {
+        // 负值区域：从蓝色渐变到白色
+        float t = normalized / zeroOffset;  // 0 到 1
+        r = t;
+        g = t;
+        b = 1.0f;
+    } else {
+        // 正值区域：从白色渐变到红色
+        float t = (normalized - zeroOffset) / (1.0f - zeroOffset);  // 0 到 1
+        r = 1.0f;
+        g = 1.0f - t;
+        b = 1.0f - t;
+    }
+
+    return IM_COL32(
+        static_cast<ImU32>(r * 255),
+        static_cast<ImU32>(g * 255),
+        static_cast<ImU32>(b * 255),
+        255
+    );
+}
+
+// ============================================================================
+// InterpolateColor - 插值颜色
+// ============================================================================
+ImU32 Renderer::InterpolateColor(ImU32 c1, ImU32 c2, ImU32 c3, float avgValue,
+                                  float minValue, float maxValue, float zeroOffset) const
+{
+    // 解包颜色
+    float r1 = static_cast<float>(c1 & 0xFF);
+    float g1 = static_cast<float>((c1 >> 8) & 0xFF);
+    float b1 = static_cast<float>((c1 >> 16) & 0xFF);
+
+    float r2 = static_cast<float>(c2 & 0xFF);
+    float g2 = static_cast<float>((c2 >> 8) & 0xFF);
+    float b2 = static_cast<float>((c2 >> 16) & 0xFF);
+
+    float r3 = static_cast<float>(c3 & 0xFF);
+    float g3 = static_cast<float>((c3 >> 8) & 0xFF);
+    float b3 = static_cast<float>((c3 >> 16) & 0xFF);
+
+    // 简单平均
+    float r = (r1 + r2 + r3) / 3.0f;
+    float g = (g1 + g2 + g3) / 3.0f;
+    float b = (b1 + b2 + b3) / 3.0f;
+
+    return IM_COL32(
+        static_cast<ImU32>(r),
+        static_cast<ImU32>(g),
+        static_cast<ImU32>(b),
+        255
+    );
 }

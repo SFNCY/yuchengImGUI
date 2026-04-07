@@ -442,8 +442,12 @@ void RenderMesh(const DualMesh& mesh, Renderer* renderer, ImU32 color, float thi
         if (edge.startIdx >= 0 && edge.startIdx < static_cast<int>(mesh.vertices.size()) &&
             edge.endIdx >= 0 && edge.endIdx < static_cast<int>(mesh.vertices.size())) {
             
-            const ImVec2& p1 = mesh.vertices[edge.startIdx].position;
-            const ImVec2& p2 = mesh.vertices[edge.endIdx].position;
+            ImVec2 p1 = mesh.vertices[edge.startIdx].position;
+            ImVec2 p2 = mesh.vertices[edge.endIdx].position;
+            
+            // 使用公开的 WorldToScreen 方法进行坐标变换（内部有 fallback）
+            p1 = renderer->WorldToScreen(p1);
+            p2 = renderer->WorldToScreen(p2);
             
             renderer->DrawLine(p1, p2, color, thickness);
         }
